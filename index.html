@@ -1,0 +1,165 @@
+<html>
+	<head>
+		<title>tts Mod提取器</title>
+		<script src="vue.min.js"></script>
+		<style>
+			img.thumb {max-height:50ex;max-width:50ex;}
+		</style>
+	</head>
+	<body>
+		<div id='app'>
+			<!--
+			请选择以下其中一个：<br>
+			1、Mod包中的Mods文件夹<br>
+			2、TTS数据目录的Mods文件夹<br>
+			-->
+			请选择Mod包中的Mods文件夹<br>
+			<input type="file" id="selectDirectory" multiple webkitdirectory v-on:change="dealDirectory(this)">
+			<div v-if="gameInited">
+				游戏名：{{gameName}}<br>
+				<span v-for="item in gameImage">
+					<img class="thumb" v-bind:src="item.url" alt="some_text">
+				</span>				
+			</div>
+		</div>
+
+		<script type="text/javascript">
+			var fileJsonList = {}
+			var fileImageList = {}
+
+			var app = new Vue({
+				el: '#app',
+				data: {
+					fileJson : {}, 
+					fileImage : {},
+
+					gameInited : false,
+					gameName : "",
+					gameImage : [],
+				},
+				methods: {
+					clean : function() {
+						fileJsonList = {}
+						app.fileImage = []
+					},
+					dealDirectory : function() {
+						app.clean()
+						var selectFiles = document.getElementById("selectDirectory").files;
+						jsonNum = 0
+						for(var file of selectFiles){
+							if (/^Mods\/Workshop\//.test(file.webkitRelativePath)
+								&& file.type =="application/json") {
+								jsonNum++;
+								jsonFile = file
+								fileJsonList[file.name] = file
+							} else if(/^Mods\/Images\//.test(file.webkitRelativePath)) {
+								fileImageList[file.name] = file
+								app.gameImage.push({name : file.name, url:window.URL.createObjectURL(file)})
+							}
+						}
+
+						if (jsonNum != 1) {
+							console.log(jsonNum)
+							alert("json文件错误")
+							return;
+						}
+
+						app.dealJson(jsonFile)
+					},
+
+					dealJson : function(file) {
+						var reader = new FileReader();
+						reader.readAsText(file);
+						reader.onload = function(){
+							//console.log("读取结果：", this.result);//当读取完成之后会回调这个函数，然后此时文件的内容存储到了result中。直接操作即可。
+							//console.log("读取结果转为JSON：");
+							let json = JSON.parse(this.result);
+							app.gameName = json.SaveName
+							objectStates = json["ObjectStates"]
+							const dealFunction = {
+								"DeckCustom" : app.dealJsonDeck,
+								"Card" : app.dealJsonCard,
+							}
+							for (key in objectStates) {
+								obj = objectStates[key];
+								func = dealFunction[obj.Name]
+								if (func) {
+									func(obj)
+								} else {
+									console.log("else", obj);
+								}
+							}
+							//console.log(objectStates);
+						}
+
+						app.gameInited = true;
+					},
+
+					dealJsonDeck : function(obj) {
+						console.log(obj)
+					},
+
+					dealJsonCard : function(obj) {
+						console.log(obj)
+					}
+				}
+			})
+//				var fileData = {}
+//		document.getElementById("selectDirectory").addEventListener("change", dealDirectory, false);
+//		function dealDirectory(){
+//			fileData = {} 
+//			var selectFiles = document.getElementById("selectDirectory").files;
+//			for(var file of selectFiles){
+//				console.log(file.webkitRelativePath);
+//	 
+//					/// read file content.
+//					var reader = new FileReader();
+//					reader.readAsDataURL(file);
+//	 
+//					reader.onloadend = function(){
+//						/// deal data.
+//						var img = new Image();
+//						/// after loader, result storage the file content result.
+//						img.src = this.result;	
+//						img.onload = function(){
+//							var myCanvas = document.getElementById("myCanvas");
+//							var cxt = myCanvas.getContext('2d');
+//	 
+//							cxt.drawImage(img, imgPosX, 0);
+//							imgPosX += imgWidth;
+//						}
+//					}
+//				}
+		</script>
+
+		
+<!--
+	<div>
+		<input type="file" id="files"/>
+	</div>
+		
+		<script>
+			var inputElement = document.getElementById("files");
+			inputElement.addEventListener("change", handleFiles, false);
+			function handleFiles() {
+			   var selectedFile = document.getElementById("files").files[0];//获取读取的File对象
+			   var name = selectedFile.name;//读取选中文件的文件名
+			   var size = selectedFile.size;//读取选中文件的大小
+			   console.log(selectedFile);
+			   console.log("文件名:"+name+"大小："+size);
+			   var reader = new FileReader();//这里是核心！！！读取操作就是由它完成的。
+				reader.readAsText(selectedFile);//读取文件的内容
+		
+				reader.onload = function(){
+					console.log("读取结果：", this.result);//当读取完成之后会回调这个函数，然后此时文件的内容存储到了result中。直接操作即可。
+		
+					console.log("读取结果转为JSON：");
+					let json = JSON.parse(this.result);
+					console.log(json);
+				};
+		
+			}
+		</script>
+	-->
+</body>
+</html>
