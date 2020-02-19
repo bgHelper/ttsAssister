@@ -1,46 +1,85 @@
 <html>
 	<head>
-		<title>tts Mod提取器</title>
+		<title>tts Mod提取器[DEMO]</title>
 		<script src="vue.min.js"></script>
 		<style>
-			img.thumb {max-height:50ex;max-width:50ex;}
+			img.thumb {max-height:15ex;max-width:15ex;}
+			div.imgFrame {background-repeat:no-repeat;display:inline-block;}
+			div.cardFrame {display:inline-block;}
 		</style>
 	</head>
 	<body>
-		<div id='app'>
-			<!--
-			请选择以下其中一个：<br>
-			1、Mod包中的Mods文件夹<br>
-			2、TTS数据目录的Mods文件夹<br>
-			-->
-			请选择Mod包中的Mods文件夹<br>
-			<input type="file" id="selectDirectory" multiple webkitdirectory v-on:change="dealDirectory(this)">
-			<div v-if="gameInited">
+		<div id='app'>			
+			请选择Mod包中的Mods文件夹：<input type="file" id="selectDirectory" multiple webkitdirectory v-on:change="dealDirectory(this)"><br>
+			<span v-if="gameInited">
 				游戏名：{{gameName}}<br>
-				<span v-for="item in gameImage">
-					<img class="thumb" v-bind:src="item.url" alt="some_text">
-				</span>				
+				配置：<br>				
+				组件：<br>
+				<span v-for="card, id in gameCard" v-if="card">
+					<div class="cardFrame">
+					{{card.count}} x 
+					<div class="imgFrame" v-bind:style = "cardImgStyle(card.face)"></div>
+					<div class="imgFrame" v-bind:style = "cardImgStyle(card.back)"></div>
+					</div>
+				</span>
 			</div>
 		</div>
 
 		<script type="text/javascript">
 			var fileJsonList = {}
 			var fileImageList = {}
+			var fileImageLoading = 0
+			var fileImageLoadFinish = false
+
+			function removeExt(filename) {
+				var dIndex = filename.lastIndexOf(".")
+				var sIndex = filename.lastIndexOf("/")
+				if ((dIndex >= 0) && (dIndex > sIndex)) {
+					return filename.substring(0, dIndex)
+				} else {
+					return filename
+				}
+			}
+
+			function searchUrl(url) {
+				var tUrl = fileImageList[url]
+				if (tUrl) {
+					return tUrl
+				}
+				
+				var localName = removeExt(url).replace(/[-:.\/]/g,"")
+				tUrl = fileImageList[localName]
+				if (tUrl) {
+					fileImageList[url] = tUrl
+					return tUrl
+				}
+
+				fileImageList[url] = url
+				return url
+			}
 
 			var app = new Vue({
 				el: '#app',
 				data: {
-					fileJson : {}, 
-					fileImage : {},
-
+					configSize : 100,
 					gameInited : false,
 					gameName : "",
-					gameImage : [],
+					gameDeck : [],
+					gameCard : [],	
 				},
 				methods: {
+					cardImgStyle : function(face) {
+						var r = app.configSize / Math.max(face.w, face.h);
+
+						str = "background-image:url('"+face.url+"');"
+						str += "width:"+face.w*r+"px;"
+						str += "height:"+face.h*r+"px;"
+						str += "background-position:"+face.x*r+"px "+face.y*r+"px;"
+						str += "background-size:"+face.tw*r+"px "+face.th*r+"px;"
+						return str
+					},
 					clean : function() {
 						fileJsonList = {}
-						app.fileImage = []
 					},
 					dealDirectory : function() {
 						app.clean()
@@ -53,8 +92,23 @@
 								jsonFile = file
 								fileJsonList[file.name] = file
 							} else if(/^Mods\/Images\//.test(file.webkitRelativePath)) {
-								fileImageList[file.name] = file
-								app.gameImage.push({name : file.name, url:window.URL.createObjectURL(file)})
+								fileImageLoading++
+								var url = window.URL.createObjectURL(file)
+								var image = new Image()								
+								image.onload = function() {
+									fileImageLoading--
+									if (fileImageLoadFinish && (fileImageLoading == 0)) {
+										if (jsonNum != 1) {
+											console.log(jsonNum)
+											alert("json文件错误")
+											return;
+										}
+
+										app.dealJson(jsonFile)
+									}
+								}
+								image.src = url
+								fileImageList[removeExt(file.name)] = { url : url, image:image};
 							}
 						}
 
@@ -64,15 +118,17 @@
 							return;
 						}
 
-						app.dealJson(jsonFile)
+						if (fileImageLoading != 0) {
+							fileImageLoadFinish = true;
+						} else {
+							app.dealJson(jsonFile)
+						}
 					},
 
 					dealJson : function(file) {
 						var reader = new FileReader();
 						reader.readAsText(file);
 						reader.onload = function(){
-							//console.log("读取结果：", this.result);//当读取完成之后会回调这个函数，然后此时文件的内容存储到了result中。直接操作即可。
-							//console.log("读取结果转为JSON：");
 							let json = JSON.parse(this.result);
 							app.gameName = json.SaveName
 							objectStates = json["ObjectStates"]
@@ -89,77 +145,103 @@
 									console.log("else", obj);
 								}
 							}
-							//console.log(objectStates);
 						}
 
 						app.gameInited = true;
 					},
 
-					dealJsonDeck : function(obj) {
-						console.log(obj)
+					pushDeck : function(id, deck) {
+						if (app.gameDeck[id]) {
+							return
+						}
+
+						var face = searchUrl(deck.FaceURL)
+						var back = searchUrl(deck.BackURL)
+
+						deckData = {
+							faceUrl : face.url,
+							faceWidth : face.image.width / deck.NumWidth,
+							faceHeight : face.image.height / deck.NumHeight,
+							faceTotalWidth : face.image.width,
+							faceTotalHeight : face.image.height,
+							backUrl : back.url,
+							backWidth : back.image.width,
+							backHeight : back.image.height,
+							backTotalWidth : back.image.width,
+							backTotalHeight : back.image.height,
+							uniqueBack : deck.UniqueBack,
+
+							numWidth : deck.NumWidth,
+							numHeight : deck.NumHeight,
+						}
+
+						if (deckData.uniqueBack) {
+							deckData.backWidth /= deck.NumWidth
+							deckData.backHeight /= deck.NumHeight
+						}
+
+						app.gameDeck[id] = deckData
 					},
 
-					dealJsonCard : function(obj) {
-						console.log(obj)
-					}
+					pushCard : function(id) {
+						if (!app.gameCard[id]) {
+							var deckId = Math.floor(id / 100)
+							var deck = app.gameDeck[deckId]
+
+							var row = Math.floor(id % 100 / deck.numWidth)
+							var col = id % deck.numWidth
+							
+							card = {
+								face : {
+									url : deck.faceUrl,
+									tw : deck.faceTotalWidth,
+									th : deck.faceTotalHeight,
+									w : deck.faceWidth,
+									h : deck.faceHeight,
+									x : -col * deck.faceWidth,
+									y : -row * deck.faceHeight,
+								},
+								back : {
+									url : deck.backUrl,
+									tw : deck.backTotalWidth,
+									th : deck.backTotalHeight,
+									w : deck.backWidth,
+									h : deck.backHeight,
+									x : 0,
+									y : 0,
+								},
+								count : 1,
+							}
+
+							if (deck.uniqueBack) {
+								card.back.x = -col*card.back.w
+								card.back.y = -row*card.back.h
+							}
+
+							app.gameCard[id] = card
+							return
+						}
+						app.gameCard[id].count++
+					},
+
+					dealJsonDeck : function(obj) {
+						for (key in obj.CustomDeck) {
+							app.pushDeck(key, obj.CustomDeck[key])
+						}
+
+						for (key in obj.DeckIDs) {
+							app.pushCard(obj.DeckIDs[key])
+						}
+					},
+
+					dealJsonCard : function(obj, deck) {	
+						for (key in obj.CustomDeck) {
+							app.pushDeck(key, obj.CustomDeck[key])
+						}
+						app.pushCard(obj.CardID)
+					},
 				}
 			})
-//				var fileData = {}
-//		document.getElementById("selectDirectory").addEventListener("change", dealDirectory, false);
-//		function dealDirectory(){
-//			fileData = {} 
-//			var selectFiles = document.getElementById("selectDirectory").files;
-//			for(var file of selectFiles){
-//				console.log(file.webkitRelativePath);
-//	 
-//					/// read file content.
-//					var reader = new FileReader();
-//					reader.readAsDataURL(file);
-//	 
-//					reader.onloadend = function(){
-//						/// deal data.
-//						var img = new Image();
-//						/// after loader, result storage the file content result.
-//						img.src = this.result;	
-//						img.onload = function(){
-//							var myCanvas = document.getElementById("myCanvas");
-//							var cxt = myCanvas.getContext('2d');
-//	 
-//							cxt.drawImage(img, imgPosX, 0);
-//							imgPosX += imgWidth;
-//						}
-//					}
-//				}
 		</script>
-
-		
-<!--
-	<div>
-		<input type="file" id="files"/>
-	</div>
-		
-		<script>
-			var inputElement = document.getElementById("files");
-			inputElement.addEventListener("change", handleFiles, false);
-			function handleFiles() {
-			   var selectedFile = document.getElementById("files").files[0];//获取读取的File对象
-			   var name = selectedFile.name;//读取选中文件的文件名
-			   var size = selectedFile.size;//读取选中文件的大小
-			   console.log(selectedFile);
-			   console.log("文件名:"+name+"大小："+size);
-			   var reader = new FileReader();//这里是核心！！！读取操作就是由它完成的。
-				reader.readAsText(selectedFile);//读取文件的内容
-		
-				reader.onload = function(){
-					console.log("读取结果：", this.result);//当读取完成之后会回调这个函数，然后此时文件的内容存储到了result中。直接操作即可。
-		
-					console.log("读取结果转为JSON：");
-					let json = JSON.parse(this.result);
-					console.log(json);
-				};
-		
-			}
-		</script>
-	-->
-</body>
+	</body>
 </html>
