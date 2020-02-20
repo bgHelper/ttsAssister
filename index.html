@@ -5,23 +5,42 @@
 		<style>
 			img.thumb {max-height:15ex;max-width:15ex;}
 			div.imgFrame {background-repeat:no-repeat;display:inline-block;}
-			div.cardFrame {display:inline-block;}
+			div.frame {display:inline-block;}
+			input.tnum {width:5ex;}
 		</style>
 	</head>
 	<body>
 		<div id='app'>			
 			请选择Mod包中的Mods文件夹：<input type="file" id="selectDirectory" multiple webkitdirectory v-on:change="dealDirectory(this)"><br>
 			<span v-if="gameInited">
-				游戏名：{{gameName}}<br>
-				配置：<br>				
-				组件：<br>
-				<span v-for="card, id in gameCard" v-if="card">
-					<div class="cardFrame">
-					{{card.count}} x 
-					<div class="imgFrame" v-bind:style = "cardImgStyle(card.face)"></div>
-					<div class="imgFrame" v-bind:style = "cardImgStyle(card.back)"></div>
-					</div>
+				名称：{{gameName}}<br>
+				显示：<br>
+					<input type="checkbox" v-model="configCard">卡牌
+					<input type="checkbox" v-model="configTile">瓦片
+					<input type="checkbox" v-model="configToken">配件
+					<input type="checkbox" v-model="configBoard">板块<br>
+					<input type="checkbox" v-model="configNumber">数目
+					<input type="checkbox" v-model="configBack">背面<br>
+					<input type="range" v-model="configSize" min = 10 max = 200>缩放<br>
+				<!--<a>输出</a>：<br>-->
+				预览：<br>
+				<span v-if="configCard">卡牌：<br>
+					<span v-for="card, id in gameCard" v-if="card">
+						<div class="frame">
+							<span v-if="configNumber"> <input type="number" class="tnum" v-model="card.count"> x </span>
+							<div class="imgFrame" v-bind:style = "cardImgStyle(card.face)"></div>
+							<div class="imgFrame" v-bind:style = "cardImgStyle(card.back)" v-if="configBack"></div>
+						</div>
+					</span><br>
 				</span>
+				<span v-if="configToken">配件：<br>
+					<span v-for="token, id in gameToken">
+						<div class="frame">
+							<span v-if="configNumber"> <input type="number" class="tnum" v-model="token.count"> x </span>
+							<img v-bind:src = "token.url" v-bind:style = "tokenImgStyle(token)">
+						</div>
+					</span><br>
+				</span>				
 			</div>
 		</div>
 
@@ -54,6 +73,13 @@
 					return tUrl
 				}
 
+				localName = url.replace(/[-:.\/]/g,"")
+				tUrl = fileImageList[localName]
+				if (tUrl) {
+					fileImageList[url] = tUrl
+					return tUrl
+				}
+
 				fileImageList[url] = url
 				return url
 			}
@@ -61,11 +87,20 @@
 			var app = new Vue({
 				el: '#app',
 				data: {
+					configCard : true,
+					configTile : true,
+					configToken : true,
+					configBoard : true,
+
+					configNumber : true,
+					configBack : true,
+
 					configSize : 100,
 					gameInited : false,
 					gameName : "",
-					gameDeck : [],
-					gameCard : [],	
+					gameDeck : {},
+					gameCard : {},
+					gameToken : {},
 				},
 				methods: {
 					cardImgStyle : function(face) {
@@ -78,8 +113,20 @@
 						str += "background-size:"+face.tw*r+"px "+face.th*r+"px;"
 						return str
 					},
+					tokenImgStyle : function(token) {
+						var r = app.configSize / Math.max(token.w, token.h);
+
+						str = "width:"+token.w*r+"px;"
+						str += "height:"+token.h*r+"px;"
+						return str
+					},
 					clean : function() {
 						fileJsonList = {}
+						fileImageLoadFinish = false
+						app.gameInited = false
+						app.gameCard = []
+						app.gameDeck = []
+						app.gameToken = {}
 					},
 					dealDirectory : function() {
 						app.clean()
@@ -103,7 +150,6 @@
 											alert("json文件错误")
 											return;
 										}
-
 										app.dealJson(jsonFile)
 									}
 								}
@@ -119,7 +165,7 @@
 						}
 
 						if (fileImageLoading != 0) {
-							fileImageLoadFinish = true;
+							fileImageLoadFinish = true
 						} else {
 							app.dealJson(jsonFile)
 						}
@@ -135,6 +181,7 @@
 							const dealFunction = {
 								"DeckCustom" : app.dealJsonDeck,
 								"Card" : app.dealJsonCard,
+								"Custom_Token" : app.dealJsonToken,
 							}
 							for (key in objectStates) {
 								obj = objectStates[key];
@@ -142,12 +189,12 @@
 								if (func) {
 									func(obj)
 								} else {
-									console.log("else", obj);
+									//console.log("else", obj);
 								}
 							}
+							console.log(app.gameToken)
+							app.gameInited = true;
 						}
-
-						app.gameInited = true;
 					},
 
 					pushDeck : function(id, deck) {
@@ -224,6 +271,21 @@
 						app.gameCard[id].count++
 					},
 
+					pushToken : function(url) {
+						if (!app.gameToken[url]) {
+							var face = searchUrl(url)
+							
+							app.gameToken[url] = {
+								url : face.url,
+								w : face.image.width,
+								h : face.image.height,
+								count : 1,
+							}
+							return
+						}
+						app.gameToken[url].count++
+					},
+
 					dealJsonDeck : function(obj) {
 						for (key in obj.CustomDeck) {
 							app.pushDeck(key, obj.CustomDeck[key])
@@ -234,11 +296,16 @@
 						}
 					},
 
-					dealJsonCard : function(obj, deck) {	
+					dealJsonCard : function(obj) {	
 						for (key in obj.CustomDeck) {
 							app.pushDeck(key, obj.CustomDeck[key])
 						}
 						app.pushCard(obj.CardID)
+					},
+
+					dealJsonToken : function(obj) {
+						console.log(obj)
+						app.pushToken(obj.CustomImage.ImageURL)
 					},
 				}
 			})
